@@ -13,6 +13,14 @@ and CLI versions - without a single prompt, path, or line of code ever leaving y
 [![Typed: mypy strict](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy-lang.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
+<br>
+
+<img src="docs/report.png" alt="observatory report: a terminal drift report with per-metric values and bootstrap confidence intervals, a CLI-upgrade comparison flagging detected shifts, and a local-only text-metrics section" width="860">
+
+<sub><code>observatory report</code> on real logs: each metric with a confidence interval, a
+within-user CLI-upgrade comparison that flags detected shifts, and local-only metrics that never
+leave the machine.</sub>
+
 </div>
 
 ---
