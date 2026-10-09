@@ -1,0 +1,12 @@
+{"_observatory_scrubbed": "1.0.0"}
+{"type": "user", "timestamp": "2026-03-01T19:00:00Z", "version": "1.0.0", "cwd": "/scrubbed/proj", "message": {"content": "add feature x"}}
+{"type": "assistant", "requestId": "r1", "message": {"id": "m1", "model": "claude-opus-4-8", "content": [{"type": "thinking", "thinking": "", "signature": "xxxxxxxxxx"}, {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/scrubbed/a.py"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "scrubbed"}]}}
+{"type": "assistant", "requestId": "r2", "message": {"id": "m2", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/scrubbed/a.py"}}]}}
+{"type": "assistant", "requestId": "r2", "message": {"id": "m2", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "t2", "name": "Edit", "input": {"file_path": "/scrubbed/a.py"}}]}}
+{"type": "assistant", "requestId": "r3", "message": {"id": "m3", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": "/scrubbed/b.py"}}]}}
+{"type": "assistant", "requestId": "r4", "message": {"id": "m4", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "t4", "name": "Edit", "input": {"file_path": "/scrubbed/a.py"}}]}}
+{"type": "assistant", "requestId": "r5", "message": {"id": "m5", "model": "claude-opus-4-8", "content": [{"type": "thinking", "thinking": "", "signature": "xxxxxxxxxxxxxxxxxxxx"}, {"type": "tool_use", "id": "t5", "name": "Read", "input": {"file_path": "/scrubbed/c.py"}}]}}
+{"type": "user", "message": {"content": "[Request interrupted by user]"}}
+{"type": "user", "message": {"content": "now add tests"}}
+{"type": "assistant", "requestId": "r6", "message": {"id": "m6", "model": "claude-opus-4-8", "content": [{"type": "tool_use", "id": "t6", "name": "Bash", "input": {"command": "scrubbed"}}]}}

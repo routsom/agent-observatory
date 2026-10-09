@@ -1,0 +1,122 @@
+# SPEC.md - Agent Observatory
+
+This is the design source of truth. If code and SPEC disagree, stop and reconcile here first
+(see `CLAUDE.md`). It defines the normalised schema, the six core metrics, the statistical
+methods, and the (phase-2) share payload.
+
+## 1. Normalised schema
+
+Adapters turn each agent's raw session log into a single `Session`. Nothing downstream knows
+which agent produced it.
+
+### `ToolCall`
+A single tool invocation inside a session.
+
+| field | type | notes |
+|---|---|---|
+| `name` | `str` | tool name, normalised (e.g. `Read`, `Edit`, `Write`, `Bash`) |
+| `kind` | `ToolKind` enum | `read` / `edit` / `other`, derived from `name` (see §2) |
+| `target` | `str \| None` | **salted fingerprint** of the file path the call touched, never the raw path |
+
+The raw file path is used only transiently, in-process, to compute `blind_edit_rate` and
+`rewrite_share`; it is fingerprinted before it is stored and never persisted or shared.
+
+### `Event`
+The dedup-collapsed timeline used by metrics.
+
+| field | type | notes |
+|---|---|---|
+| `role` | `EventRole` enum | `user_turn` / `assistant_api_call` / `interrupt` / `tool_result` / `other` |
+| `tool_calls` | `list[ToolCall]` | tool calls emitted by an `assistant_api_call` |
+| `thinking_signature_len` | `int \| None` | summed signature length of thinking blocks on this call (proxy) |
+
+### `Session`
+| field | type | notes |
+|---|---|---|
+| `session_id` | `str` | stable id from the log (dedup/idempotency key) |
+| `agent` | `Agent` enum | `claude_code` / `codex` / `gemini` / `opencode` |
+| `cli_version` | `str` | reported by the log; `unknown` if absent |
+| `model_id` | `str` | normalised model id; `unknown` if mixed/absent |
+| `effort` | `Effort` enum | `low`/`medium`/`high`/`unknown` (reasoning effort if the log states it) |
+| `project_fingerprint` | `str` | sha256(cwd + per-machine salt), 16 hex chars |
+| `language` | `Language` enum | dominant language heuristic from tool targets; `unknown` |
+| `task_type` | `TaskType` enum | local heuristic: `feature`/`bugfix`/`refactor`/`docs`/`other`/`unknown` |
+| `local_hour` | `int` | 0-23, start of session in local time |
+| `started_at` | `datetime` | first event timestamp (UTC) |
+| `events` | `list[Event]` | ordered, deduped |
+| `unknown_events` | `int` | count of log lines whose type the adapter did not recognise (invariant 5) |
+
+## 2. Tool classification
+
+| `ToolKind` | member tool names |
+|---|---|
+| `read` | `Read`, `NotebookRead`, Codex `read_file` |
+| `edit` | `Edit`, `MultiEdit`, `Write`, `NotebookEdit`, Codex `apply_patch` / `write_file` |
+| `other` | everything else (`Bash`, `Grep`, `Glob`, `Task`, ...) |
+
+`tool_calls` on a session = every `ToolCall` across all `assistant_api_call` events.
+
+## 3. Core metrics
+
+All metrics are **pure functions**: a `Session` (or a list of them) in, a number out. No I/O.
+Each returns `None` when its denominator is zero rather than raising. Per invariant 7 every
+metric has (a) a definition here, (b) a fixture test with a hand-checked value, and (c) a
+synthetic-shift test.
+
+| metric | per-session definition | direction of "worse" |
+|---|---|---|
+| `read_edit_ratio` | `count(read tool calls) / count(edit tool calls)`; `None` if no edits | lower = edits with less reading |
+| `blind_edit_rate` | fraction of edit calls whose `target` had **no** prior `read` or `edit` of the same target earlier in the session; `None` if no edits | higher = more editing blind |
+| `interrupts_per_1k_tool_calls` | `1000 * count(interrupt events) / count(tool calls)`; `None` if no tool calls | higher = more user course-correction |
+| `rewrite_share` | fraction of edit calls whose `target` was **already edited** earlier in the session; `None` if no edits | higher = more churn/rework |
+| `thinking_depth_proxy` | mean `thinking_signature_len` over assistant calls that have one; `None` if none | **proxy only** - signature length, not reasoning quality |
+| `api_calls_per_user_turn` | `count(assistant_api_call events) / count(user_turn events)`; `None` if no user turns | higher = more model round-trips per human ask |
+
+`thinking_depth_proxy` is always reported with the word "proxy": it measures the length of the
+opaque `signature` string on thinking blocks, which correlates loosely with thinking length but
+is **not** a measure of reasoning quality. Codex has no thinking signatures, so it is `None` there.
+
+## 4. Session context (recorded, not a metric)
+
+Captured for slicing and for the within-user index: `agent`, `cli_version`, `model_id`, `effort`,
+session length (`len(events)`, `count(tool calls)`), `project_fingerprint`, `language`,
+`task_type`, `local_hour`. `task_type` and `language` are best-effort local heuristics and are
+labelled as such; they are enums so they can live in the (future) payload without leaking text.
+
+## 5. Statistical methods
+
+Reported numbers never stand bare (invariant 6): every reported metric carries its `window`,
+`n_sessions`, `n_tool_calls`, a confidence interval, and the `method` name.
+
+- **Aggregation weights users equally.** A metric over many sessions is the mean of per-user
+  means, not the mean of sessions, so a heavy user cannot dominate.
+- **Bootstrap CI resamples users, not sessions** (invariant 8). `method = "user_bootstrap"`, 2000
+  resamples, percentile interval. In phase 1 there is a single local user, so the CI degenerates
+  to a per-session bootstrap and is labelled `method = "session_bootstrap"` and widened
+  accordingly; the report states n_users = 1.
+- **Within-user upgrade comparison** (phase 1, local): for a metric and a split dimension
+  (`cli_version` or `model_id`), compare the two most recent values with a bootstrap difference
+  CI. This is the local analogue of the server-side difference-in-differences.
+- Every method has a simulation test proving its coverage / false-alarm rate on data with a known
+  answer (invariant 8).
+
+## 6. Share payload (phase 2 - specified now, not sent in phase 1)
+
+`share/payload.py` defines the only thing allowed to leave the machine. Constraints enforced by
+tests (invariant 1):
+
+- Model uses `extra="forbid"`.
+- Every string field is an enum (`agent`, `cli_version` is a constrained version string,
+  `model_id`, `effort`, `task_type`, `language`, `method`). No free text.
+- Only numbers and these enums: metric value, CI low/high, n_sessions, n_tool_calls, n_users,
+  window, local_hour buckets. No prompts, code, paths, project names, thinking text, tool args.
+- Sharing is off by default; `observatory share --dry-run` prints the exact JSON bytes and sends
+  nothing. `share/client.py` is the only module permitted to import an HTTP library and is a
+  stub in phase 1.
+
+## 7. Phasing
+
+- **Phase 1 (now):** local analyzer - Claude Code + Codex adapters, the six metrics, DuckDB
+  history, `observatory report`, `observatory share --dry-run`. No network client.
+- **Phase 2:** server ingest + payload.client, text metrics (local-only extras).
+- **Phase 3:** `stats/` within-user index, upgrade DiD, change-point detection on the server.

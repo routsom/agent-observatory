@@ -1,0 +1,5 @@
+{"_observatory_scrubbed": "0.6.0"}
+{"type": "session_meta", "timestamp": "2026-02-10T09:00:00Z", "payload": {"cli_version": "0.6.0", "cwd": "/scrubbed/proj", "model": "gpt-5-codex"}}
+{"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "implement login"}]}}
+{"type": "response_item", "payload": {"type": "function_call", "name": "apply_patch", "call_id": "c1", "arguments": {"path": "/scrubbed/x.py"}}}
+{"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "scrubbed"}]}}
