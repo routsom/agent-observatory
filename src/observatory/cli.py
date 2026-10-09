@@ -37,7 +37,7 @@ def _load_sessions(agent: str | None, root: Path | None) -> list[Session]:
         if agent and adapter.agent_name != agent:
             continue
         for path in adapter.discover(root):
-            sessions.append(adapter.parse_file(path))
+            sessions.extend(adapter.parse_sessions(path))
     return sessions
 
 

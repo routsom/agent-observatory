@@ -1,0 +1,21 @@
+{
+  "_observatory_scrubbed": "0.4.1",
+  "sessionId": "gem-session-1",
+  "cliVersion": "0.4.1",
+  "model": "gemini-2.5-pro",
+  "cwd": "/scrubbed/proj",
+  "startTime": "2026-03-02T09:00:00Z",
+  "messages": [
+    {"role": "user", "parts": [{"text": "fix the bug"}]},
+    {"role": "model", "parts": [
+      {"thoughtSignature": "xxxxxxxxxx"},
+      {"functionCall": {"name": "read_file", "args": {"absolute_path": "/scrubbed/a.py"}}}
+    ]},
+    {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {}}}]},
+    {"role": "model", "parts": [
+      {"functionCall": {"name": "replace", "args": {"file_path": "/scrubbed/a.py"}}}
+    ]},
+    {"role": "model", "parts": [{"text": "Done ```x```"}]},
+    {"role": "user", "cancelled": true, "parts": [{"text": "[Request cancelled]"}]}
+  ]
+}

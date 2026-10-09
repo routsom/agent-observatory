@@ -79,6 +79,9 @@ class CodexAdapter:
             return
         yield from sorted(base.glob("**/rollout-*.jsonl"))
 
+    def parse_sessions(self, path: Path) -> Iterator[Session]:
+        yield self.parse_file(path)
+
     def parse_file(self, path: Path) -> Session:
         session_id = path.stem
         cli_version = "unknown"
@@ -159,9 +162,10 @@ class CodexAdapter:
                                 )
                             )
                             pending_calls.clear()
-                    elif ptype == "function_call":
+                    elif ptype in ("function_call", "custom_tool_call"):
+                        # function_call carries JSON `arguments`; custom_tool_call a string `input`.
                         name = str(payload.get("name", ""))
-                        target = _call_target(payload.get("arguments"))
+                        target = _call_target(payload.get("arguments") or payload.get("input"))
                         if target:
                             raw_targets.append(target)
                         pending_calls.append(
@@ -171,7 +175,11 @@ class CodexAdapter:
                                 target=fingerprint(target),
                             )
                         )
-                    elif ptype in ("reasoning", "function_call_output"):
+                    elif ptype in (
+                        "reasoning",
+                        "function_call_output",
+                        "custom_tool_call_output",
+                    ):
                         continue
                     else:
                         unknown_events += 1
@@ -180,7 +188,12 @@ class CodexAdapter:
                         flush()
                         events.append(Event(role=EventRole.interrupt))
                     # other event_msg kinds (token_count, task_started, ...) are ignored
-                elif ltype in ("turn_context", "compacted"):
+                elif ltype in (
+                    "turn_context",
+                    "compacted",
+                    "world_state",
+                    "token_usage_record",
+                ):
                     continue
                 else:
                     unknown_events += 1

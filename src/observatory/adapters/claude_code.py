@@ -98,6 +98,9 @@ class ClaudeCodeAdapter:
             return
         yield from sorted(base.glob("*/*.jsonl"))
 
+    def parse_sessions(self, path: Path) -> Iterator[Session]:
+        yield self.parse_file(path)
+
     def parse_file(self, path: Path) -> Session:
         session_id = path.stem
         cli_version = "unknown"

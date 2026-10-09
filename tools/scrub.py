@@ -34,6 +34,7 @@ _KEEP_STR_KEYS = {
     "role",
     "model",
     "version",
+    "cli_version",  # Codex session_meta version token (not sensitive)
     "name",  # tool name
     "stop_reason",
     "stop_sequence",

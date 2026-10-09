@@ -1,9 +1,9 @@
 # Agent Observatory
 
 A local, privacy-first analyzer for coding-agent session logs. It reads the logs agents already
-write to disk (Claude Code, Codex), computes objective behaviour metrics **on your machine**, and
-tracks quality drift across agents, models, and CLI versions. Nothing leaves your machine unless
-you explicitly opt in - and even then, only numeric aggregates.
+write to disk (Claude Code, Codex, Gemini CLI, and opencode), computes objective behaviour metrics
+**on your machine**, and tracks quality drift across agents, models, and CLI versions. Nothing
+leaves your machine unless you explicitly opt in - and even then, only numeric aggregates.
 
 See `CLAUDE.md` for the build contract and `SPEC.md` for metric and schema definitions.
 

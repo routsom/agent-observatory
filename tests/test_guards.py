@@ -58,14 +58,32 @@ def test_only_client_may_import_http() -> None:
 
 
 def test_every_fixture_carries_scrubber_marker() -> None:
-    """Invariant 4: no fixture may exist without the scrubber's marker as its first line."""
-    fixtures = list(FIXTURES.rglob("*.jsonl"))
+    """Invariant 4: every fixture must carry the scrubber marker, whatever its format."""
+    import sqlite3
+
+    fixtures = (
+        list(FIXTURES.rglob("*.jsonl"))
+        + list(FIXTURES.rglob("*.json"))
+        + list(FIXTURES.rglob("*.db"))
+    )
     assert fixtures, "no fixtures found"
     for fx in fixtures:
-        with fx.open(encoding="utf-8") as fh:
-            first = fh.readline().strip()
-        obj = json.loads(first)
-        assert isinstance(obj, dict) and "_observatory_scrubbed" in obj, fx
+        if fx.suffix == ".jsonl":  # first line is the marker object
+            with fx.open(encoding="utf-8") as fh:
+                obj = json.loads(fh.readline().strip())
+            assert isinstance(obj, dict) and "_observatory_scrubbed" in obj, fx
+        elif fx.suffix == ".json":  # top-level marker key
+            obj = json.loads(fx.read_text(encoding="utf-8"))
+            assert isinstance(obj, dict) and "_observatory_scrubbed" in obj, fx
+        else:  # SQLite: a _meta marker row
+            con = sqlite3.connect(f"file:{fx}?mode=ro", uri=True)
+            try:
+                row = con.execute(
+                    "SELECT value FROM _meta WHERE key = '_observatory_scrubbed'"
+                ).fetchone()
+            finally:
+                con.close()
+            assert row is not None, fx
 
 
 _CLIENT_ID = "11111111-1111-1111-1111-111111111111"

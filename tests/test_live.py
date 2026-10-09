@@ -15,7 +15,7 @@ def test_real_logs_parse_without_crashing() -> None:
     sessions = []
     for adapter in discover_adapters():
         for path in list(adapter.discover())[:25]:  # cap for speed
-            sessions.append(adapter.parse_file(path))
+            sessions.extend(adapter.parse_sessions(path))
     if not sessions:
         pytest.skip("no local agent logs found on this machine")
     # The parser must never crash and should recognise the vast majority of each log.
@@ -30,7 +30,7 @@ def test_report_on_real_logs() -> None:
     sessions = []
     for adapter in discover_adapters():
         for path in adapter.discover():
-            sessions.append(adapter.parse_file(path))
+            sessions.extend(adapter.parse_sessions(path))
     if not sessions:
         pytest.skip("no local agent logs found on this machine")
     rep = build_report(sessions, window="all")

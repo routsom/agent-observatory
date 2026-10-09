@@ -14,8 +14,10 @@ from typing import Protocol, runtime_checkable
 
 from observatory.schema import Language, Session, TaskType, ToolKind
 
-# Tool-name -> kind classification. See SPEC.md §2. Lower-cased for matching.
-_READ_TOOLS = {"read", "notebookread", "read_file"}
+# Tool-name -> kind classification. See SPEC.md §2. Lower-cased for matching. Covers Claude Code,
+# Codex, Gemini CLI (`read_file`/`read_many_files`/`write_file`/`replace`), and opencode (`read`/
+# `edit`/`write`).
+_READ_TOOLS = {"read", "notebookread", "read_file", "read_many_files"}
 _EDIT_TOOLS = {
     "edit",
     "multiedit",
@@ -23,6 +25,7 @@ _EDIT_TOOLS = {
     "notebookedit",
     "apply_patch",
     "write_file",
+    "replace",
 }
 
 
@@ -124,17 +127,23 @@ class Adapter(Protocol):
         ...
 
     def discover(self, root: Path | None = None) -> Iterator[Path]:
-        """Yield session-log files under `root` (or the default root)."""
+        """Yield session-log sources under `root` (or the default root)."""
         ...
 
-    def parse_file(self, path: Path) -> Session:
-        """Parse one session-log file into a normalised `Session`."""
+    def parse_sessions(self, path: Path) -> Iterator[Session]:
+        """Parse a source into one or more normalised `Session`s.
+
+        Most agents write one session per file; opencode stores many sessions in one SQLite DB,
+        hence the iterator. Single-session adapters yield exactly one.
+        """
         ...
 
 
 def discover_adapters() -> list[Adapter]:
-    """All adapters available in phase 1."""
+    """All adapters available for local ingest."""
     from observatory.adapters.claude_code import ClaudeCodeAdapter
     from observatory.adapters.codex import CodexAdapter
+    from observatory.adapters.gemini import GeminiAdapter
+    from observatory.adapters.opencode import OpenCodeAdapter
 
-    return [ClaudeCodeAdapter(), CodexAdapter()]
+    return [ClaudeCodeAdapter(), CodexAdapter(), GeminiAdapter(), OpenCodeAdapter()]
