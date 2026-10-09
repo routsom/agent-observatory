@@ -68,10 +68,25 @@ def test_every_fixture_carries_scrubber_marker() -> None:
         assert isinstance(obj, dict) and "_observatory_scrubbed" in obj, fx
 
 
+_CLIENT_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def _payload_from_fixture(fixtures_dir: Path):  # type: ignore[no-untyped-def]
+    from observatory.adapters import ClaudeCodeAdapter
+
+    session = ClaudeCodeAdapter().parse_file(
+        fixtures_dir / "claude_code" / "synthetic-1.0.0" / "basic.jsonl"
+    )
+    return build_payload([session], agent=Agent.claude_code, window="all", client_id=_CLIENT_ID)
+
+
 def test_payload_forbids_unexpected_fields() -> None:
     """Invariant 1: the payload model rejects any field not on the allowlist."""
     with pytest.raises(ValidationError):
         SharePayload(
+            client_id=_CLIENT_ID,
+            submission_id=_CLIENT_ID,
+            generated_on="2026-01-01",  # type: ignore[arg-type]
             agent=Agent.claude_code,
             window="30d",
             aggregates=[],
@@ -79,6 +94,8 @@ def test_payload_forbids_unexpected_fields() -> None:
         )
     with pytest.raises(ValidationError):
         MetricAggregate(
+            cli_version="1.0.0",
+            model_id="claude-opus-4-8",
             metric="read_edit_ratio",
             value=1.0,
             ci_low=0.9,
@@ -91,19 +108,24 @@ def test_payload_forbids_unexpected_fields() -> None:
         )
 
 
-_ALLOWED_STRING_RE = re.compile(r"^[a-z0-9_]+$")  # enum members, metric names
-_WINDOW_RE = re.compile(r"^(all|\d+[hdw])$")
+# Every string that may travel must match one of these content-free shapes (SPEC.md §6).
+_ALLOWED_STRING_PATTERNS = [
+    re.compile(r"^[a-z0-9_]+$"),  # enum members, metric names, method
+    re.compile(r"^[A-Za-z0-9._-]{1,64}$"),  # cli_version / model_id tokens
+    re.compile(r"^[0-9a-f-]{36}$"),  # client_id / submission_id (UUID)
+    re.compile(r"^(all|\d+[hdw])$"),  # window
+    re.compile(r"^\d{4}-\d{2}-\d{2}$"),  # generated_on date
+]
 
 
-def test_payload_contains_only_numbers_and_enums() -> None:
-    """Invariant 1: every string that travels is categorical - no free text can leak."""
-    rep = build_report([], window="30d")
-    payload = build_payload(rep, agent=Agent.claude_code)
+def test_payload_contains_only_numbers_and_constrained_strings(fixtures_dir: Path) -> None:
+    """Invariant 1: every string that travels is categorical/constrained - no free text leaks."""
+    payload = _payload_from_fixture(fixtures_dir)
     dumped = payload.model_dump(mode="json")
 
     def check(value: object) -> None:
         if isinstance(value, str):
-            assert _ALLOWED_STRING_RE.match(value) or _WINDOW_RE.match(value), value
+            assert any(p.match(value) for p in _ALLOWED_STRING_PATTERNS), value
         elif isinstance(value, dict):
             for v in value.values():
                 check(v)
@@ -114,6 +136,16 @@ def test_payload_contains_only_numbers_and_enums() -> None:
             assert value is None or isinstance(value, (int, float, bool))
 
     check(dumped)
+
+
+def test_text_metric_names_never_appear_in_payload(fixtures_dir: Path) -> None:
+    """SPEC.md §7: local-only text metrics must never leak into the share payload."""
+    from observatory.metrics import TEXT_METRICS
+
+    payload = _payload_from_fixture(fixtures_dir)
+    blob = json.dumps(payload.model_dump(mode="json"))
+    for name in TEXT_METRICS:
+        assert name not in blob, name
 
 
 def test_analysis_pipeline_makes_no_network_calls(
@@ -133,5 +165,5 @@ def test_analysis_pipeline_makes_no_network_calls(
         fixtures_dir / "claude_code" / "synthetic-1.0.0" / "basic.jsonl"
     )
     rep = build_report([session], window="all")
-    payload = build_payload(rep, agent=Agent.claude_code)
-    assert payload.aggregates  # pipeline ran end-to-end with sockets blocked
+    payload = build_payload([session], agent=Agent.claude_code, window="all", client_id=_CLIENT_ID)
+    assert rep.aggregates and payload.aggregates  # pipeline ran with sockets blocked

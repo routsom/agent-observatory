@@ -12,9 +12,23 @@ See `CLAUDE.md` for the build contract and `SPEC.md` for metric and schema defin
 ```bash
 uv sync --all-extras
 uv run observatory ingest                 # read local agent logs into ~/.observatory history
-uv run observatory report --window 30d    # personal drift report
+uv run observatory report --window 30d    # personal drift report (incl. local-only text metrics)
 uv run observatory share --dry-run        # print the exact numbers-only payload (sends nothing)
+uv run observatory share --send           # upload it (off by default; one-time consent prompt)
+uv run observatory consent --revoke       # turn sharing back off
 ```
+
+### Server (optional)
+
+The public side that aggregates shared payloads lives in `server/` and runs on FastAPI + DuckDB:
+
+```bash
+uv run observatory-server serve           # ingest API + public dashboard at http://127.0.0.1:8000
+uv run observatory-server aggregate       # nightly cross-user aggregation (k-anonymous publishing)
+```
+
+Only cross-user cells with at least `MIN_USERS` (5) distinct contributors are ever published;
+everything is weighted per-user and shown with a bootstrap CI.
 
 ## Development
 
@@ -22,7 +36,7 @@ uv run observatory share --dry-run        # print the exact numbers-only payload
 uv run pytest -m "not live"               # offline suite (default) - must always pass
 uv run pytest -m live                     # opt-in, reads your real local logs
 uv run ruff check . && uv run ruff format --check .
-uv run mypy src/observatory
+uv run mypy src/observatory server
 ```
 
 ## Metrics

@@ -1,6 +1,7 @@
-"""Opt-in sharing. Phase 1 builds the payload and the --dry-run path only; `client.py` (the sole
-module permitted to touch the network) is a stub until phase 2."""
+"""Opt-in sharing: build the allowlisted aggregate payload and upload it. `client.py` is the sole
+module in `src/observatory` permitted to touch the network."""
 
+from observatory.share.client import SendResult, send
 from observatory.share.payload import MetricAggregate, SharePayload, build_payload
 
-__all__ = ["MetricAggregate", "SharePayload", "build_payload"]
+__all__ = ["MetricAggregate", "SendResult", "SharePayload", "build_payload", "send"]

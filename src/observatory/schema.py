@@ -69,11 +69,18 @@ class ToolCall(BaseModel):
 
 
 class Event(BaseModel):
-    """A dedup-collapsed point in the session timeline."""
+    """A dedup-collapsed point in the session timeline.
+
+    The ``*_text_len`` / ``has_code_fence`` fields feed local-only text metrics (SPEC.md §7) and
+    are **never** placed in the share payload.
+    """
 
     role: EventRole
     tool_calls: list[ToolCall] = Field(default_factory=list)
     thinking_signature_len: int | None = None
+    user_text_len: int | None = None
+    assistant_text_len: int | None = None
+    has_code_fence: bool | None = None
 
 
 class Session(BaseModel):

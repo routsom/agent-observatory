@@ -93,11 +93,12 @@ def test_cli_end_to_end(tmp_path: Path, fixtures_dir: Path) -> None:
     payload = json.loads(res.output)
     assert payload["agent"] == "claude_code"
     assert payload["schema_version"] == 1
+    assert payload["client_id"]  # anonymous id from local config
     assert {a["metric"] for a in payload["aggregates"]}  # non-empty, numbers-only by construction
 
 
-def test_cli_share_without_dry_run_refuses(tmp_path: Path) -> None:
+def test_cli_share_without_flags_refuses(tmp_path: Path) -> None:
     db = tmp_path / "h.duckdb"
     res = runner.invoke(app, ["share", "--db", str(db)])
     assert res.exit_code == 2
-    assert "not implemented in phase 1" in res.output
+    assert "off by default" in res.output

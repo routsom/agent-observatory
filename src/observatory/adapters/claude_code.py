@@ -190,6 +190,8 @@ class ClaudeCodeAdapter:
         tool_calls: list[ToolCall] = []
         sig_len = 0
         has_thinking = False
+        text_len = 0
+        has_code_fence = False
         content = message.get("content")
         if isinstance(content, list):
             for block in content:
@@ -213,10 +215,18 @@ class ClaudeCodeAdapter:
                     sig = block.get("signature")
                     if isinstance(sig, str):
                         sig_len += len(sig)
+                elif btype == "text":
+                    text = block.get("text")
+                    if isinstance(text, str):
+                        text_len += len(text)
+                        if "```" in text:
+                            has_code_fence = True
         return Event(
             role=EventRole.assistant_api_call,
             tool_calls=tool_calls,
             thinking_signature_len=sig_len if has_thinking else None,
+            assistant_text_len=text_len,
+            has_code_fence=has_code_fence,
         )
 
     def _user_event(self, obj: dict[str, Any]) -> tuple[Event | None, str | None]:
@@ -231,7 +241,7 @@ class ClaudeCodeAdapter:
         if is_tool_result:
             return Event(role=EventRole.tool_result), None
         if text is not None:
-            return Event(role=EventRole.user_turn), text
+            return Event(role=EventRole.user_turn, user_text_len=len(text)), text
         return Event(role=EventRole.other), None
 
 

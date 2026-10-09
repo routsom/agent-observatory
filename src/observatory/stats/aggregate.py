@@ -68,8 +68,12 @@ def _user_means(
     return [_mean(v) for v in values_by_user.values() if v]
 
 
-def _point_estimate(values_by_user: dict[str, list[float]]) -> float | None:
-    means = _user_means(values_by_user)
+def mean_of_group_means(values_by_group: dict[str, list[float]]) -> float | None:
+    """Point estimate that weights groups (users) equally: mean of per-group means. None if empty.
+
+    Shared by the local `aggregate()` and the server's nightly job so both weight users the same.
+    """
+    means = _user_means(values_by_group)
     if not means:
         return None
     return _mean(means)
@@ -86,32 +90,38 @@ def _percentile(sorted_xs: list[float], q: float) -> float:
     return sorted_xs[lo] * (1 - frac) + sorted_xs[hi] * frac
 
 
-def _bootstrap_ci(
-    values_by_user: dict[str, list[float]],
+def bootstrap_over_groups(
+    values_by_group: dict[str, list[float]],
     *,
     n_resamples: int,
     rng: random.Random,
 ) -> tuple[float | None, float | None, str]:
-    users = [u for u, v in values_by_user.items() if v]
-    if not users:
+    """Percentile CI for the mean-of-group-means, resampling groups (users), not sessions.
+
+    With more than one group this is a user bootstrap (``method="user_bootstrap"``). With a single
+    group it degenerates to resampling that group's values and is labelled ``session_bootstrap`` so
+    precision is never overstated. Shared by the local report and the server's nightly job.
+    """
+    groups = [g for g, v in values_by_group.items() if v]
+    if not groups:
         return None, None, "none"
 
-    if len(users) > 1:
+    if len(groups) > 1:
         method = "user_bootstrap"
         samples: list[float] = []
         for _ in range(n_resamples):
-            picked = [rng.choice(users) for _ in users]
-            means = [_mean(values_by_user[u]) for u in picked]
+            picked = [rng.choice(groups) for _ in groups]
+            means = [_mean(values_by_group[g]) for g in picked]
             samples.append(_mean(means))
     else:
-        # Single user: resample that user's sessions instead; widen honestly by labelling it.
+        # Single group: resample its values instead; widen honestly by labelling it.
         method = "session_bootstrap"
-        sessions = values_by_user[users[0]]
-        if len(sessions) < 2:
+        values = values_by_group[groups[0]]
+        if len(values) < 2:
             return None, None, method
         samples = []
         for _ in range(n_resamples):
-            picked_vals = [rng.choice(sessions) for _ in sessions]
+            picked_vals = [rng.choice(values) for _ in values]
             samples.append(_mean(picked_vals))
 
     samples.sort()
@@ -137,8 +147,8 @@ def aggregate(
         if v is not None:
             values_by_user.setdefault(user_key(s), []).append(v)
 
-    value = _point_estimate(values_by_user)
-    ci_low, ci_high, method = _bootstrap_ci(
+    value = mean_of_group_means(values_by_user)
+    ci_low, ci_high, method = bootstrap_over_groups(
         values_by_user, n_resamples=n_resamples, rng=random.Random(seed)
     )
     n_users = len({user_key(s) for s in sessions}) if sessions else 0
@@ -185,8 +195,8 @@ def within_user_diff(
 
     b_groups = grouped(baseline)
     c_groups = grouped(current)
-    base_pt = _point_estimate(b_groups)
-    curr_pt = _point_estimate(c_groups)
+    base_pt = mean_of_group_means(b_groups)
+    curr_pt = mean_of_group_means(c_groups)
     delta = None if base_pt is None or curr_pt is None else curr_pt - base_pt
 
     ci_low = ci_high = None

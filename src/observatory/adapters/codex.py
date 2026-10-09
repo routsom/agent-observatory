@@ -142,13 +142,20 @@ class CodexAdapter:
                             flush()
                             if first_prompt is None and text:
                                 first_prompt = text
-                            events.append(Event(role=EventRole.user_turn))
+                            events.append(
+                                Event(
+                                    role=EventRole.user_turn,
+                                    user_text_len=len(text) if text else 0,
+                                )
+                            )
                         elif role == "assistant":
                             # closing message of a model round
                             events.append(
                                 Event(
                                     role=EventRole.assistant_api_call,
                                     tool_calls=list(pending_calls),
+                                    assistant_text_len=len(text) if text else 0,
+                                    has_code_fence=("```" in text) if text else False,
                                 )
                             )
                             pending_calls.clear()

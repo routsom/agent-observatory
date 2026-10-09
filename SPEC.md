@@ -100,23 +100,67 @@ Reported numbers never stand bare (invariant 6): every reported metric carries i
 - Every method has a simulation test proving its coverage / false-alarm rate on data with a known
   answer (invariant 8).
 
-## 6. Share payload (phase 2 - specified now, not sent in phase 1)
+## 6. Share payload
 
 `share/payload.py` defines the only thing allowed to leave the machine. Constraints enforced by
 tests (invariant 1):
 
 - Model uses `extra="forbid"`.
-- Every string field is an enum (`agent`, `cli_version` is a constrained version string,
-  `model_id`, `effort`, `task_type`, `language`, `method`). No free text.
-- Only numbers and these enums: metric value, CI low/high, n_sessions, n_tool_calls, n_users,
-  window, local_hour buckets. No prompts, code, paths, project names, thinking text, tool args.
-- Sharing is off by default; `observatory share --dry-run` prints the exact JSON bytes and sends
-  nothing. `share/client.py` is the only module permitted to import an HTTP library and is a
-  stub in phase 1.
+- Every string field is either an enum (`agent`, `effort`, `task_type`, `language`, `method`) or
+  a **pattern-constrained** string that carries no content: `cli_version`/`model_id` (version-like
+  tokens), `client_id`/`submission_id` (UUIDv4), and `window` (`all` or `\d+[hdw]`). No free text.
+- Only numbers and those strings: metric value, CI low/high, n_sessions, n_tool_calls, n_users,
+  `generated_on` (a **date**, not a precise timestamp - deliberately coarsened so submission timing
+  cannot fingerprint a user). No prompts, code, paths, project names, thinking text, tool args.
+- Local-only text metrics (§8) are **never** included; a test asserts their names never appear in
+  a built payload.
+- Sharing is off by default (§9); `observatory share --dry-run` prints the exact JSON bytes and
+  sends nothing. `share/client.py` is the only module in `src/observatory` permitted to import an
+  HTTP library.
 
-## 7. Phasing
+### Anonymous identity
 
-- **Phase 1 (now):** local analyzer - Claude Code + Codex adapters, the six metrics, DuckDB
+`client_id` is a random UUIDv4 generated once per machine and stored in
+`~/.observatory/config.json`. It contains no personal information; its only purpose is to let the
+server weight each user equally and keep only a user's latest submission per
+`(agent, cli_version, metric, window)`. `submission_id` is a fresh UUIDv4 per upload, used for
+idempotent ingest.
+
+## 7. Local text metrics (local-only, never shared)
+
+Computed on the machine from text the adapters retain locally (user/assistant message lengths,
+code-fence presence). They are **never** placed in the share payload and live in their own
+`TEXT_METRICS` registry so they cannot leak by construction.
+
+| metric | per-session definition |
+|---|---|
+| `mean_user_turn_chars` | mean character length of user turns; `None` if no user turns |
+| `mean_assistant_chars_per_api_call` | mean assistant text length per API call; `None` if none |
+| `code_fence_rate` | fraction of assistant API calls whose text contains a ``` code fence; `None` if none |
+
+Each still follows invariant 7: a definition here, a fixture test with a hand-checked value, and a
+synthetic-shift test.
+
+## 8. Server (ingest + nightly aggregation + dashboard)
+
+`server/observatory_server/` is a separate package (it may import FastAPI/HTTP freely; the
+"only client.py imports HTTP" guard scans `src/observatory` only).
+
+- **Ingest.** `POST /ingest` validates the body against the *same* `SharePayload` model (single
+  source of truth), stores rows in a server DuckDB, is idempotent on `submission_id`, and keeps
+  only the latest submission per `(client_id, agent, cli_version, metric, window)`.
+- **Nightly aggregation.** For each `(agent, cli_version, metric, window)`: weight clients equally
+  (mean of per-client values) and bootstrap **over clients** for the CI, reusing
+  `stats.aggregate.bootstrap_over_groups` so client and server compute CIs identically.
+- **k-anonymity.** A cell is published only when at least `MIN_USERS = 5` distinct `client_id`s
+  contributed; otherwise it is suppressed entirely.
+- **Dashboard.** `GET /` serves static HTML rendered from the published aggregates; `GET
+  /aggregates` returns them as JSON. No per-user data is ever exposed - only k-anonymous cells.
+
+## 9. Phasing
+
+- **Phase 1 (done):** local analyzer - Claude Code + Codex adapters, the six metrics, DuckDB
   history, `observatory report`, `observatory share --dry-run`. No network client.
-- **Phase 2:** server ingest + payload.client, text metrics (local-only extras).
+- **Phase 2 (now):** opt-in `share/client.py` uploader + consent, the server (§8), and local text
+  metrics (§7).
 - **Phase 3:** `stats/` within-user index, upgrade DiD, change-point detection on the server.

@@ -12,7 +12,7 @@ import html
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from observatory.metrics import METRICS
+from observatory.metrics import METRICS, TEXT_METRICS
 from observatory.schema import Session
 from observatory.stats import AggregateResult, DiffResult, aggregate, within_user_diff
 
@@ -27,6 +27,7 @@ class DriftReport:
     n_users: int
     aggregates: list[AggregateResult]
     version_diffs: list[DiffResult]
+    text_aggregates: list[AggregateResult]  # local-only (SPEC.md §7); never shared
 
 
 def _two_most_recent_versions(sessions: Sequence[Session]) -> tuple[str, str] | None:
@@ -72,6 +73,10 @@ def build_report(sessions: Sequence[Session], *, window: str, seed: int = 0) -> 
                 )
             )
 
+    text_aggregates = [
+        aggregate(sessions, name, fn, window=window, seed=seed) for name, fn in TEXT_METRICS.items()
+    ]
+
     # Phase 1 runs on a single local user's logs, so n_users is 1 whenever there are sessions.
     return DriftReport(
         window=window,
@@ -79,6 +84,7 @@ def build_report(sessions: Sequence[Session], *, window: str, seed: int = 0) -> 
         n_users=1 if sessions else 0,
         aggregates=aggregates,
         version_diffs=version_diffs,
+        text_aggregates=text_aggregates,
     )
 
 
@@ -149,6 +155,15 @@ def render_terminal(report: DriftReport) -> str:
         console.print(
             "[dim]* CI excludes zero: a detected shift between versions in your own usage.[/dim]"
         )
+
+    ttable = Table(title="Local text metrics (never shared)")
+    ttable.add_column("metric")
+    ttable.add_column("value", justify="right")
+    ttable.add_column("95% CI", justify="right")
+    ttable.add_column("method")
+    for a in report.text_aggregates:
+        ttable.add_row(a.metric, _fmt(a.value, 1), _ci(a), a.method)
+    console.print(ttable)
 
     return console.export_text()
 

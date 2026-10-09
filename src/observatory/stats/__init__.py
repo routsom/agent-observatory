@@ -7,7 +7,16 @@ from observatory.stats.aggregate import (
     AggregateResult,
     DiffResult,
     aggregate,
+    bootstrap_over_groups,
+    mean_of_group_means,
     within_user_diff,
 )
 
-__all__ = ["AggregateResult", "DiffResult", "aggregate", "within_user_diff"]
+__all__ = [
+    "AggregateResult",
+    "DiffResult",
+    "aggregate",
+    "bootstrap_over_groups",
+    "mean_of_group_means",
+    "within_user_diff",
+]
