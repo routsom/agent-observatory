@@ -53,8 +53,31 @@ nothing downstream knows which agent produced a session. Open files read-only, c
 rather than raising, and add a scrubbed fixture per supported CLI version. See `codex.py` (jsonl),
 `gemini.py` (json), and `opencode.py` (SQLite) for the three source shapes.
 
-## Pull requests
+## Development workflow
+
+`main` is protected: it requires a pull request and a green CI run, enforces linear history, and
+applies to everyone (including admins). All changes - however small - land through a PR.
+
+```bash
+git switch -c <type>/<short-description>    # e.g. feat/gemini-effort, fix/codex-interrupts
+# ... make the change ...
+uv run pytest -m "not live" && uv run ruff check . && uv run ruff format --check . \
+  && uv run mypy src/observatory server     # run the gate locally first
+git push -u origin HEAD
+gh pr create --fill                          # opens a PR; CODEOWNERS requests review
+```
+
+Branch name prefixes: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`.
+
+Once CI is green the PR can be merged. Merges are **squash-only** so history stays linear and each
+change is one commit on `main`; the branch is deleted automatically on merge. Keep the squash
+commit subject in the imperative mood and let the body explain the why and how you verified it.
+
+## Pull request checklist
 
 - Keep PRs focused; match the surrounding code's style and comment density.
 - Use plain dashes, not em dashes.
 - Describe the change and how you verified it. CI runs the full gate on Python 3.11 and 3.12.
+- The PR template's invariant checklist must hold (no new network imports outside
+  `share/client.py`, payload stays numbers-only, new metrics/methods carry their tests, no raw
+  logs committed).
