@@ -9,7 +9,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from observatory.cli import app
-from observatory.report import build_report, render_html, render_terminal
+from observatory.report import build_report, render_html, render_svg, render_terminal
 from observatory.schema import Agent, Event, EventRole, Session, ToolCall, ToolKind
 
 runner = CliRunner()
@@ -72,8 +72,13 @@ def test_renderers_smoke() -> None:
     assert html.startswith("<!doctype html>")
     assert "proxy" in html  # thinking_depth_proxy is flagged
 
+    svg = render_svg(rep, title="demo")
+    assert svg.lstrip().startswith("<svg")
+    assert "blind_edit_rate" in svg
+
     empty = render_terminal(build_report([], window="7d"))
     assert "No sessions" in empty
+    assert render_svg(build_report([], window="7d")).lstrip().startswith("<svg")
 
 
 def test_cli_end_to_end(tmp_path: Path, fixtures_dir: Path) -> None:

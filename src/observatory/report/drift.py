@@ -11,10 +11,14 @@ from __future__ import annotations
 import html
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from observatory.metrics import METRICS, TEXT_METRICS
 from observatory.schema import Session
 from observatory.stats import AggregateResult, DiffResult, aggregate, within_user_diff
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 # Metrics whose reported value is an opaque proxy, flagged everywhere they are shown.
 _PROXY_METRICS = {"thinking_depth_proxy"}
@@ -99,7 +103,16 @@ def _ci(a: AggregateResult | DiffResult) -> str:
 
 
 def render_terminal(report: DriftReport) -> str:
-    """Render the report to a rich-markup string (consumed by the CLI)."""
+    """Render the report to a plain-text string (consumed by the CLI)."""
+    return _build_console(report).export_text()
+
+
+def render_svg(report: DriftReport, *, title: str = "observatory report") -> str:
+    """Render the report as a terminal-styled SVG (used for docs/screenshots)."""
+    return _build_console(report).export_svg(title=title)
+
+
+def _build_console(report: DriftReport) -> Console:
     from rich.console import Console
     from rich.table import Table
 
@@ -115,7 +128,7 @@ def render_terminal(report: DriftReport) -> str:
         console.print(
             "[yellow]No sessions in this window. Run `observatory ingest` first.[/yellow]"
         )
-        return console.export_text()
+        return console
 
     table = Table(title="Current window", show_lines=False)
     table.add_column("metric")
@@ -165,7 +178,7 @@ def render_terminal(report: DriftReport) -> str:
         ttable.add_row(a.metric, _fmt(a.value, 1), _ci(a), a.method)
     console.print(ttable)
 
-    return console.export_text()
+    return console
 
 
 def render_html(report: DriftReport) -> str:
