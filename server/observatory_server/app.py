@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from observatory.share.payload import SharePayload
+from observatory_server.analysis import as_dicts, run_change_points, run_upgrade_did
 from observatory_server.dashboard import render_dashboard
 from observatory_server.nightly import run_aggregation
 from observatory_server.store import ServerStore
@@ -43,11 +44,23 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             cells = s.published()
         return [cell.__dict__ for cell in cells]
 
+    @app.get("/upgrades")
+    def upgrades() -> list[dict[str, object]]:
+        with store() as s:
+            return as_dicts(run_upgrade_did(s))
+
+    @app.get("/changepoints")
+    def changepoints() -> list[dict[str, object]]:
+        with store() as s:
+            return as_dicts(run_change_points(s))
+
     @app.get("/", response_class=HTMLResponse)
     def dashboard() -> str:
         with store() as s:
             cells = s.published()
-        return render_dashboard(cells)
+            dids = run_upgrade_did(s)
+            changes = run_change_points(s)
+        return render_dashboard(cells, dids, changes)
 
     return app
 

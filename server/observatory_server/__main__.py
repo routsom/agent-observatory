@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from observatory_server.analysis import run_change_points, run_upgrade_did
 from observatory_server.nightly import run_aggregation
 from observatory_server.store import ServerStore
 
@@ -31,6 +32,21 @@ def aggregate(
     with ServerStore(db) as store:
         cells = run_aggregation(store)
     typer.echo(f"Published {len(cells)} k-anonymous cells.")
+
+
+@app.command()
+def analyze(
+    db: Path | None = typer.Option(None, help="Server DB path."),
+) -> None:
+    """Run phase-3 analysis: upgrade DiD + change-point detection over history."""
+    with ServerStore(db) as store:
+        dids = run_upgrade_did(store)
+        changes = run_change_points(store)
+    significant = [c for c in changes if c.p_value < 0.05]
+    typer.echo(
+        f"DiD: {len(dids)} upgrade comparison(s); "
+        f"change points: {len(significant)} significant of {len(changes)} series."
+    )
 
 
 if __name__ == "__main__":

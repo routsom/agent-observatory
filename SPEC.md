@@ -100,6 +100,34 @@ Reported numbers never stand bare (invariant 6): every reported metric carries i
 - Every method has a simulation test proving its coverage / false-alarm rate on data with a known
   answer (invariant 8).
 
+### 5a. Within-user index (phase 3)
+
+Users have very different baselines (one reads a lot, another edits blind by habit), so a raw
+cross-user mean mixes level differences with drift. The **within-user index** re-expresses each
+user's value as an *additive deviation from that user's own mean*: `indexed = value - user_mean`.
+Aggregating the deviations (again weighting users equally, bootstrapping over users) isolates
+change from baseline. Additive, not ratio, so it is stable when a user's mean is near zero.
+
+### 5b. Upgrade difference-in-differences (phase 3, server)
+
+Estimates the effect of a CLI upgrade A->B while subtracting secular drift:
+
+- **Treated** = clients with the metric on *both* A and B; each contributes a paired delta `B - A`.
+- **Control** = clients seen on A at two dates straddling the upgrade; each contributes `A_late - A_early`.
+- **Estimate** = mean(treated deltas) - mean(control deltas); CI by bootstrapping **over clients**
+  (treated and control resampled independently), `method = "did"`.
+- **Fallback**: with no usable control arm, report the paired within-upgrader difference and label
+  it `method = "paired_first_difference"` so the weaker claim is explicit.
+
+### 5c. Change-point detection (phase 3, server)
+
+Given a date-ordered series of a metric's cross-user aggregate, locate a single level shift with a
+**CUSUM** statistic (max absolute cumulative deviation from the series mean) and assess it with a
+**permutation test** (the series is shuffled `B` times; p = fraction of shuffles whose statistic
+meets or exceeds the observed one). Returns the change index/date, pre/post means, statistic, and p.
+Assumption-light and directly testable for false-alarm rate (stationary series) and power (injected
+shift).
+
 ## 6. Share payload
 
 `share/payload.py` defines the only thing allowed to leave the machine. Constraints enforced by
@@ -153,14 +181,21 @@ synthetic-shift test.
   (mean of per-client values) and bootstrap **over clients** for the CI, reusing
   `stats.aggregate.bootstrap_over_groups` so client and server compute CIs identically.
 - **k-anonymity.** A cell is published only when at least `MIN_USERS = 5` distinct `client_id`s
-  contributed; otherwise it is suppressed entirely.
+  contributed; otherwise it is suppressed entirely. The same threshold gates every phase-3 result.
 - **Dashboard.** `GET /` serves static HTML rendered from the published aggregates; `GET
   /aggregates` returns them as JSON. No per-user data is ever exposed - only k-anonymous cells.
+- **History (phase 3).** Ingest also appends every dated submission to a `submission_history`
+  table keyed by `(client_id, agent, cli_version, metric, window, generated_on)` (dedup on
+  `submission_id`). Only the phase-3 analysis jobs read it; the dashboard aggregation is unchanged.
+- **Analysis (phase 3).** `observatory-server analyze` computes upgrade DiD (§5b) and change points
+  (§5c) from history, suppresses any result below `MIN_USERS`, and exposes them at `GET /upgrades`
+  and `GET /changepoints`; the dashboard shows a compact section for each.
 
 ## 9. Phasing
 
 - **Phase 1 (done):** local analyzer - Claude Code + Codex adapters, the six metrics, DuckDB
   history, `observatory report`, `observatory share --dry-run`. No network client.
-- **Phase 2 (now):** opt-in `share/client.py` uploader + consent, the server (§8), and local text
+- **Phase 2 (done):** opt-in `share/client.py` uploader + consent, the server (§8), and local text
   metrics (§7).
-- **Phase 3:** `stats/` within-user index, upgrade DiD, change-point detection on the server.
+- **Phase 3 (now):** `stats/` within-user index (§5a), upgrade DiD (§5b), and change-point
+  detection (§5c), wired into the server over `submission_history`.

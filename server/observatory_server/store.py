@@ -97,6 +97,21 @@ class ServerStore:
             )
             """
         )
+        # Phase 3: dated history for DiD + change-point (one row per client/cell/date).
+        self._con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS submission_history (
+                client_id    VARCHAR NOT NULL,
+                agent        VARCHAR NOT NULL,
+                cli_version  VARCHAR NOT NULL,
+                metric       VARCHAR NOT NULL,
+                "window"     VARCHAR NOT NULL,
+                value        DOUBLE,
+                generated_on DATE NOT NULL,
+                PRIMARY KEY (client_id, agent, cli_version, metric, "window", generated_on)
+            )
+            """
+        )
 
     def ingest(self, payload: SharePayload) -> bool:
         """Store a submission. Returns False if this submission_id was already ingested."""
@@ -137,6 +152,28 @@ class ServerStore:
                 generated_on = excluded.generated_on
             """,
             rows,
+        )
+        history_rows = [
+            (
+                payload.client_id,
+                payload.agent.value,
+                a.cli_version,
+                a.metric,
+                payload.window,
+                a.value,
+                payload.generated_on,
+            )
+            for a in payload.aggregates
+        ]
+        self._con.executemany(
+            """
+            INSERT INTO submission_history
+                (client_id, agent, cli_version, metric, "window", value, generated_on)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (client_id, agent, cli_version, metric, "window", generated_on)
+                DO UPDATE SET value = excluded.value
+            """,
+            history_rows,
         )
         return True
 
@@ -201,6 +238,69 @@ class ServerStore:
             )
             for r in rows
         ]
+
+    # --- phase-3 readers over submission_history ---
+
+    def metric_keys(self) -> list[tuple[str, str, str]]:
+        """Distinct (agent, metric, window) keys present in history."""
+        rows = self._con.execute(
+            'SELECT DISTINCT agent, metric, "window" FROM submission_history'
+        ).fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    def versions_by_first_seen(self, agent: str, metric: str, window: str) -> list[str]:
+        """CLI versions for a cell, ordered by when they were first submitted (earliest first)."""
+        rows = self._con.execute(
+            "SELECT cli_version, MIN(generated_on) AS first_seen FROM submission_history "
+            'WHERE agent = ? AND metric = ? AND "window" = ? '
+            "GROUP BY cli_version ORDER BY first_seen, cli_version",
+            [agent, metric, window],
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def latest_value_by_client(
+        self, agent: str, cli_version: str, metric: str, window: str
+    ) -> dict[str, float]:
+        """Each client's latest non-null value for a cell."""
+        rows = self._con.execute(
+            "SELECT client_id, value FROM submission_history h "
+            'WHERE agent = ? AND cli_version = ? AND metric = ? AND "window" = ? '
+            "AND value IS NOT NULL "
+            "AND generated_on = (SELECT MAX(generated_on) FROM submission_history h2 "
+            "  WHERE h2.client_id = h.client_id AND h2.agent = h.agent "
+            "  AND h2.cli_version = h.cli_version AND h2.metric = h.metric "
+            '  AND h2."window" = h."window")',
+            [agent, cli_version, metric, window],
+        ).fetchall()
+        return {r[0]: float(r[1]) for r in rows}
+
+    def endpoints_by_client(
+        self, agent: str, cli_version: str, metric: str, window: str
+    ) -> dict[str, tuple[float, float]]:
+        """Clients with >= 2 dated values for a cell -> (earliest value, latest value)."""
+        rows = self._con.execute(
+            "SELECT client_id, value, generated_on FROM submission_history "
+            'WHERE agent = ? AND cli_version = ? AND metric = ? AND "window" = ? '
+            "AND value IS NOT NULL ORDER BY client_id, generated_on",
+            [agent, cli_version, metric, window],
+        ).fetchall()
+        by_client: dict[str, list[float]] = {}
+        for client_id, value, _ in rows:
+            by_client.setdefault(client_id, []).append(float(value))
+        return {c: (v[0], v[-1]) for c, v in by_client.items() if len(v) >= 2}
+
+    def date_series(
+        self, agent: str, cli_version: str, metric: str, window: str, *, min_users: int
+    ) -> list[tuple[str, float]]:
+        """Per-date user-equal mean for a cell, keeping only dates with >= min_users clients."""
+        rows = self._con.execute(
+            "SELECT generated_on, AVG(value) AS m, COUNT(DISTINCT client_id) AS n "
+            "FROM submission_history "
+            'WHERE agent = ? AND cli_version = ? AND metric = ? AND "window" = ? '
+            "AND value IS NOT NULL GROUP BY generated_on ORDER BY generated_on",
+            [agent, cli_version, metric, window],
+        ).fetchall()
+        return [(str(r[0]), float(r[1])) for r in rows if r[2] >= min_users]
 
     def close(self) -> None:
         self._con.close()

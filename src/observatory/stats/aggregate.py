@@ -79,8 +79,8 @@ def mean_of_group_means(values_by_group: dict[str, list[float]]) -> float | None
     return _mean(means)
 
 
-def _percentile(sorted_xs: list[float], q: float) -> float:
-    """Linear-interpolation percentile, q in [0, 1]."""
+def percentile(sorted_xs: list[float], q: float) -> float:
+    """Linear-interpolation percentile of an already-sorted sequence, q in [0, 1]."""
     if len(sorted_xs) == 1:
         return sorted_xs[0]
     pos = q * (len(sorted_xs) - 1)
@@ -125,7 +125,7 @@ def bootstrap_over_groups(
             samples.append(_mean(picked_vals))
 
     samples.sort()
-    return _percentile(samples, 0.025), _percentile(samples, 0.975), method
+    return percentile(samples, 0.025), percentile(samples, 0.975), method
 
 
 def aggregate(
@@ -218,7 +218,7 @@ def within_user_diff(
                 cp = _mean([rng.choice(cvals) for _ in cvals])
             deltas.append(cp - bp)
         deltas.sort()
-        ci_low, ci_high = _percentile(deltas, 0.025), _percentile(deltas, 0.975)
+        ci_low, ci_high = percentile(deltas, 0.025), percentile(deltas, 0.975)
 
     return DiffResult(
         metric=metric,
