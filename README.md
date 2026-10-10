@@ -33,6 +33,7 @@ enforced by the type system and by tests.
 
 ## Table of contents
 
+- [Reading the report](#reading-the-report)
 - [Why](#why)
 - [Features](#features)
 - [How it works](#how-it-works)
@@ -46,6 +47,27 @@ enforced by the type system and by tests.
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Reading the report
+
+The screenshot above is what `observatory report` prints - three stacked tables:
+
+- **Current window** - where each metric sits right now, over the chosen window. Every value comes
+  with a 95% confidence interval, the `method` behind it, and the sample size (`n_sessions`,
+  `n_tool_calls`), so you never read a bare number. For example, `read_edit_ratio 0.626` means the
+  agent did roughly 0.6 file reads per edit over 18 sessions.
+- **CLI upgrade: before → after** - the same metrics compared across the two CLI versions you
+  actually used, as a within-user difference (`Δ`) with a confidence interval on the *change*. A
+  trailing `*` means the interval excludes zero: a shift big enough to stand out from noise. In the
+  screenshot, interrupts, thinking depth, and API calls per user turn all moved after the version
+  change, while metrics without enough data on both sides show `-` / `n/a`.
+- **Local text metrics (never shared)** - extra signals derived from message text that stay on your
+  machine and are never part of any shared payload.
+
+A couple of labels to know: `method` shows `session_bootstrap` here because it is one person's logs;
+across many opted-in users the server weights each user equally and reports `user_bootstrap`. And
+`thinking_depth_proxy` is always marked a *proxy* - it is the length of the opaque thinking
+signature, not a measure of reasoning quality.
 
 ## Why
 
